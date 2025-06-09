@@ -212,7 +212,7 @@ while [ "$KPM_PATCH_SUCCESS" = false ] && [ "$KPM_RETRIES" -lt "$MAX_RETRIES" ];
         if [ "$PATCH_EXIT_CODE" -eq 0 ]; then
             [ ! -f "oImage" ] && abort "ERROR：补丁生成失败，未找到 oImage ❌"
             mv oImage Image
-            cp Image "$split_img/kernel" || abort "ERROR：复制 Image 到目标失败 ❌"
+            cp Image "$AKHOME" || abort "ERROR：复制 Image 到目标失败 ❌"
             ui_print "-> KPM 补丁应用完成 🎉"
             KPM_PATCH_SUCCESS=true
             rm -rf "$TMPDIR"
