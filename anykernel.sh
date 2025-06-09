@@ -31,6 +31,98 @@ no_magisk_check=1
 # import functions/variables and setup patching - see for reference (DO NOT REMOVE)
 . tools/ak3-core.sh
 
+ui_print ""
+ui_print "-> 开始执行刷机脚本... ✨"
+ui_print "↓↓↓👇向下滑动解锁👇↓↓↓" 
+ui_print "----------------------------------------"
+ui_print "-> 检测设备信息..."
+ui_print "-> 设备信息："
+ui_print "   设备名称: $(getprop ro.product.device)"
+ui_print "   设备型号: $(getprop ro.product.model)"
+ui_print "   Android 版本: $(getprop ro.build.version.release)"
+ui_print "   内核版本: $(uname -r)"
+
+if [ -d /data/adb/magisk -a -f $AKHOME/magisk_patched ]; then
+    ui_print "注意❗Magisk/Alpha直接刷入可能有奇怪的问题，建议完全卸载后安装❗"
+    ui_print ""
+    ui_print "-> 检测到 Magisk/Alpha 环境，是否继续？"
+    ui_print "   音量上键/下键：退出安装 ❌"
+    ui_print "   5秒无操作将自动继续 ▶️"
+
+    timeout=5
+    key_pressed=false
+    for i in $(seq $timeout); do
+        key_output=$(getevent -qlc 1 2>/dev/null)
+        if [ -n "$key_output" ]; then
+            key=$(echo "$key_output" | awk '{print $3}')
+            case "$key" in
+                "KEY_VOLUMEUP" | "KEY_VOLUMEDOWN")
+                    key_pressed=true
+                    break
+                    ;;
+            esac
+        fi
+        sleep 1
+        ui_print "   ⏳ 剩余时间: $((timeout - i))秒"
+    done
+
+    if [ "$key_pressed" = true ]; then
+        abort "-> 用户选择退出安装（检测到 Magisk/Alpha 环境）❌"
+    else
+        ui_print "-> 无操作，继续安装（风险自负）⚠️"
+    fi
+fi
+
+ui_print ""
+ui_print "-> 正在尝试删除冲突部分..."
+
+clean_targets="
+/data/adb/modules/zygisk_shamiko|卸载Zygisk-Shamiko模块
+/data/adb/shamiko|清理Shamiko残留文件
+/data/adb/modules/susfs4ksu|卸载susfs4ksu模块
+/data/adb/susfs4ksu|清理susfs4ksu残留
+/data/adb/ksu/susfs4ksu|清理KSU版susfs残留
+/data/adb/magisk.db|移除Magisk数据库
+"
+
+echo "$clean_targets" | while read -r target; do
+    if [ -z "$target" ]; then
+        continue
+    fi
+
+    path=$(echo "$target" | cut -d '|' -f 1)
+    message=$(echo "$target" | cut -d '|' -f 2)
+
+    if [ -e "$path" ]; then
+        ui_print "▸ 正在处理: $message"
+        target_name=$(basename "$path")
+
+        if rm -rf "$path" 2>/dev/null; then
+            ui_print "✅ 清理成功: $target_name"
+            case "$target_name" in
+                "zygisk_shamiko"|"shamiko")
+                    ui_print "   ▸ 已卸载shamiko，susfs和它不兼容也不需要"
+                    ;;
+                "susfs4ksu")
+                    ui_print "   ▸ 已删除susfs附加模块，在新版本用不上它"
+                    ;;
+                "magisk.db")
+                    ui_print "   ▸ 注意: Magisk配置可能需要手动清除"
+                    ;;
+                "zram"|"ksu_zram")
+                    ui_print "   ▸ 旧版ZRAM模块已移除"
+                    ;;
+            esac
+        else
+            ui_print "⚠️ 清理失败: $target_name (可能需要手动删除)"
+        fi
+    else
+        ui_print "ℹ️ 未发现: $(basename "$path")"
+    fi
+done
+
+ui_print "✔️ 冲突模块处理完成"
+
 kernel_version=$(cat /proc/version | awk -F '-' '{print $1}' | awk '{print $3}')
 case $kernel_version in
     5.1*) ksu_supported=true ;;
@@ -43,6 +135,100 @@ ui_print "内核构建者: Coolapk@Suxiaoqing"
 ui_print " " "  -> ksu_supported: $ksu_supported"
 $ksu_supported || abort "  -> Non-GKI device, abort."
 
+ui_print "-> 进入 KPM 补丁选择阶段"
+
+KPM_PATCH_SUCCESS=false
+KPM_RETRIES=0
+MAX_RETRIES=3
+
+while [ "$KPM_PATCH_SUCCESS" = false ] && [ "$KPM_RETRIES" -lt "$MAX_RETRIES" ]; do
+    KPM_RETRIES=$((KPM_RETRIES + 1))
+    ui_print ""
+    ui_print "-> KPM 补丁尝试次数: $KPM_RETRIES / $MAX_RETRIES"
+    ui_print ""
+    ui_print "⚠️可能会异常重启1~2次⚠️"
+    ui_print "  这很明显是正常的❛˓◞˂̵✧"
+    ui_print "一直卡一屏就要重刷boot了"
+    ui_print " 没有需求的话可以跳过避免"
+    ui_print ""
+    ui_print "-> 是否应用 KPM 补丁？"
+    ui_print "   音量上键：应用 👍"
+    ui_print "   音量下键：跳过 👎"
+    SKIP_PATCH=1
+
+    ui_print "   请在 10 秒内按键..."
+    timeout=10
+    key_pressed=false
+    detected_key=""
+    end_time=$(( $(date +%s) + timeout ))
+
+    while [ $(date +%s) -lt $end_time ]; do
+        key_output=$(getevent -qlc 1 2>/dev/null)
+        if [ -n "$key_output" ]; then
+            key=$(echo "$key_output" | awk '{print $3}')
+            case "$key" in
+                "KEY_VOLUMEUP" | "KEY_VOLUMEDOWN")
+                    detected_key="$key"
+                    key_pressed=true
+                    break
+                    ;;
+            esac
+        fi
+        sleep 0.1
+    done
+
+    if [ "$key_pressed" = true ]; then
+        if [ "$detected_key" = "KEY_VOLUMEUP" ]; then
+            SKIP_PATCH=0
+            ui_print "-> 用户选择：应用 KPM 补丁"
+        else
+            SKIP_PATCH=1
+            ui_print "-> 用户选择：跳过 KPM 补丁"
+        fi
+    else
+        ui_print "-> 未检测到按键，默认为跳过 KPM 补丁"
+    fi
+
+    IMG_SRC="$AKHOME/Image"
+    PATCH_BIN="$AKHOME/patch_android"
+
+    if [ "$SKIP_PATCH" -eq 0 ]; then
+        ui_print ""
+        ui_print "-> 开始应用 KPM 补丁... 🩹"
+        [ ! -f "$PATCH_BIN" ] && abort "ERROR：找不到补丁工具 $PATCH_BIN ❌"
+        TMPDIR="/data/local/tmp/kpm_patch_$(date +%Y%m%d_%H%M%S)_$$"
+        mkdir -p "$TMPDIR" || abort "ERROR：创建临时目录失败 ❌"
+        cp "$IMG_SRC" "$TMPDIR/" || abort "ERROR：复制 Image 失败 ❌"
+        cp "$PATCH_BIN" "$TMPDIR/" || abort "ERROR：复制 patch_android 失败 ❌"
+        chmod +x "$TMPDIR/patch_android"
+        cd "$TMPDIR" || abort "ERROR: 切换到临时目录失败 ❌"
+
+        ui_print "-> 执行 patch_android..."
+        ./patch_android
+        PATCH_EXIT_CODE=$?
+
+        ui_print "-> patch_android 执行返回码: $PATCH_EXIT_CODE"
+
+        if [ "$PATCH_EXIT_CODE" -eq 0 ]; then
+            [ ! -f "oImage" ] && abort "ERROR：补丁生成失败，未找到 oImage ❌"
+            mv oImage Image
+            cp Image "$AKHOME" || abort "ERROR：复制 Image 到目标失败 ❌"
+            ui_print "-> KPM 补丁应用完成 🎉"
+            KPM_PATCH_SUCCESS=true
+        else
+            ui_print "ERROR：补丁应用失败 ❌"
+            ui_print "-> 尝试重试补丁应用... 🛠️"
+            rm -rf "$TMPDIR"
+        fi
+    else
+        ui_print "-> 跳过 KPM 补丁应用"
+    fi
+done
+
+if [ "$KPM_PATCH_SUCCESS" = false ]; then
+    abort "-> KPM 补丁应用失败，退出安装 ❌"
+fi
+
 # boot install
 if [ -L "/dev/block/bootdevice/by-name/init_boot_a" -o -L "/dev/block/by-name/init_boot_a" ]; then
     split_boot # for devices with init_boot ramdisk
@@ -51,38 +237,70 @@ else
     dump_boot # use split_boot to skip ramdisk unpack, e.g. for devices with init_boot ramdisk
     write_boot # use flash_boot to skip ramdisk repack, e.g. for devices with init_boot ramdisk
 fi
-## end boot install
-# 优先选择模块路径
-if [ -f "$AKHOME/zram.zip" ]; then
-    MODULE_PATH="$AKHOME/zram.zip"
+
+ui_print ""
+ui_print "-> 进入 ZRAM 模块安装阶段"
+ui_print ""
+ui_print "-> 是否安装 ZRAM 模块？"
+ui_print "用于管理/支持官方不支持的ZRAM"
+ui_print ""
+ui_print "   音量上键：安装 👇"
+ui_print "   音量下键：跳过 👆"
+INSTALL_ZRAM=0
+timeout=10
+key_pressed=false
+detected_key=""
+end_time=$(( $(date +%s) + timeout ))
+
+while [ $(date +%s) -lt $end_time ]; do
+    key_output=$(getevent -qlc 1 2>/dev/null)
+    if [ -n "$key_output" ]; then
+        key=$(echo "$key_output" | awk '{print $3}')
+        case "$key" in
+            "KEY_VOLUMEDOWN" | "KEY_VOLUMEUP")
+                detected_key="$key"
+                key_pressed=true
+                break
+                ;;
+        esac
+    fi
+    sleep 0.1
+done
+
+if [ "$key_pressed" = true ]; then
+    if [ "$detected_key" = "KEY_VOLUMEUP" ]; then
+        INSTALL_ZRAM=1
+        ui_print "-> 用户选择：安装 ZRAM 模块"
+    else
+        INSTALL_ZRAM=0
+        ui_print "-> 用户选择：跳过 ZRAM 模块安装"
+    fi
 else
-    ui_print "  -> No ZRAM module found!"
-    exit 1
+    ui_print "-> 未检测到按键，默认为跳过 ZRAM 模块安装"
 fi
 
-KSUD_PATH="/data/adb/ksud"
-ui_print "安装 zram压缩算法附加 模块？音量上跳过安装；音量下安装模块"
-ui_print "Install zram module?Volume up: NO；Volume down: YES"
+if [ "$INSTALL_ZRAM" -eq 1 ]; then
+    ui_print ""
+    ui_print "-> 开始安装 ZRAM 模块 'zram.zip'... 📦"
+    MODULE_ZIP="$AKHOME/zram.zip"
+    KSUD_PATH="/data/adb/ksud"
 
-key_click=""
-while [ "$key_click" = "" ]; do
-    key_click=$(getevent -qlc 1 | awk '{ print $3 }' | grep 'KEY_VOLUME')
-    sleep 0.2
-done
-case "$key_click" in
-    "KEY_VOLUMEDOWN")
-        if [ -f "$KSUD_PATH" ]; then
-            ui_print "Installing zram Module..."
-            /data/adb/ksud module install "$MODULE_PATH"
-            ui_print "Installation Complete"
+    if [ ! -f "$MODULE_ZIP" ]; then
+        ui_print "ERROR：找不到模块文件 $MODULE_ZIP，跳过安装 ❌"
+    elif [ ! -x "$KSUD_PATH" ]; then
+        ui_print "ERROR：ksud 工具不可执行，请确保已正确安装KernelSU ❌"
+    else
+        ui_print "-> 正在执行模块安装命令..."
+        "$KSUD_PATH" module install "$MODULE_ZIP"
+        if [ $? -eq 0 ]; then
+            ui_print "✅ ZRAM 模块安装成功！"
         else
-            ui_print "KSUD Not Found, skipping installation"
+            ui_print "⚠️ 模块安装失败，请检查日志 ❌"
         fi
-        ;;
-    "KEY_VOLUMEUP")
-        ui_print "Skipping zram module installation"
-        ;;
-    *)
-        ui_print "Unknown key input, skipping installation"
-        ;;
-esac
+    fi
+fi
+
+ui_print "----------------------------------------"
+ui_print "刷机脚本执行完毕，请重启设备以应用更改 🎉"
+ui_print "----------------------------------------"
+exit 0
