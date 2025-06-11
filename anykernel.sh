@@ -129,6 +129,38 @@ ui_print "内核构建者: Coolapk@Suxiaoqing"
 ui_print " " "  -> ksu_supported: $ksu_supported"
 $ksu_supported || abort "  -> Non-GKI device, abort."
 
+# 等待用户按键选择（音量键）
+wait_for_key() {
+    local timeout=$1
+    local prompt_up=$2
+    local prompt_down=$3
+    local key=""
+    local end_time=$(( $(date +%s) + timeout ))
+
+    ui_print "$prompt_up"
+    ui_print "$prompt_down"
+    ui_print "  ⏳ 剩余时间: $timeout 秒..."
+
+    while [ $(date +%s) -lt $end_time ]; do
+        key_output=$(getevent -qlc 1 2>/dev/null)
+        if [ -n "$key_output" ]; then
+            key=$(echo "$key_output" | awk '{print $3}')
+            case "$key" in
+                "KEY_VOLUMEUP")
+                    echo "UP"
+                    return
+                    ;;
+                "KEY_VOLUMEDOWN")
+                    echo "DOWN"
+                    return
+                    ;;
+            esac
+        fi
+        sleep 0.1
+    done
+    echo "NONE"
+}
+
 # 进入 KPM 补丁选择阶段
 ui_print "-> 进入 KPM 补丁选择阶段"
 
@@ -138,41 +170,24 @@ MAX_RETRIES=3
 
 # 修改：如果跳过补丁，直接跳到 ZRAM 安装
 ui_print "-> 是否应用 KPM 补丁？"
-ui_print "   音量上键：应用 👍"
-ui_print "   音量下键：跳过 👎"
+choice=$(wait_for_key 10 "   音量上键：应用 👍" "   音量下键：跳过 👎")
 SKIP_PATCH=1
 
-timeout=10
-key_pressed=false
-detected_key=""
-end_time=$(( $(date +%s) + timeout ))
-
-while [ $(date +%s) -lt $end_time ]; do
-    key_output=$(getevent -qlc 1 2>/dev/null)
-    if [ -n "$key_output" ]; then
-        key=$(echo "$key_output" | awk '{print $3}')
-        case "$key" in
-            "KEY_VOLUMEUP" | "KEY_VOLUMEDOWN")
-                detected_key="$key"
-                key_pressed=true
-                break
-                ;;
-        esac
-    fi
-    sleep 0.1
-done
-
-if [ "$key_pressed" = true ]; then
-    if [ "$detected_key" = "KEY_VOLUMEUP" ]; then
-        SKIP_PATCH=0
+case "$choice" in
+    "UP")
         ui_print "-> 用户选择：应用 KPM 补丁"
-    else
-        SKIP_PATCH=1
+        SKIP_PATCH=0
+        ;;
+    "DOWN")
         ui_print "-> 用户选择：跳过 KPM 补丁"
-    fi
-else
-    ui_print "-> 未检测到按键，默认为跳过 KPM 补丁"
-fi
+        ;;
+    *)
+        ui_print "-> 未检测到按键，默认为跳过 KPM 补丁"
+        ;;
+esac
+
+IMG_SRC="$AKHOME/Image"
+PATCH_BIN="$AKHOME/patch_android"
 
 if [ "$SKIP_PATCH" -eq 0 ]; then
     # 如果选择应用 KPM 补丁，则开始应用补丁
@@ -212,44 +227,21 @@ fi
 # 进入 ZRAM 模块安装阶段
 ui_print ""
 ui_print "-> 进入 ZRAM 模块安装阶段"
-ui_print ""
-ui_print "-> 是否安装 ZRAM 模块？"
-ui_print "用于管理/支持官方不支持的ZRAM"
-ui_print ""
-ui_print "   音量上键：安装 👇"
-ui_print "   音量下键：跳过 👆"
+choice=$(wait_for_key 10 "   音量上键：安装 👇" "   音量下键：跳过 👆")
 INSTALL_ZRAM=0
-timeout=10
-key_pressed=false
-detected_key=""
-end_time=$(( $(date +%s) + timeout ))
 
-while [ $(date +%s) -lt $end_time ]; do
-    key_output=$(getevent -qlc 1 2>/dev/null)
-    if [ -n "$key_output" ]; then
-        key=$(echo "$key_output" | awk '{print $3}')
-        case "$key" in
-            "KEY_VOLUMEDOWN" | "KEY_VOLUMEUP")
-                detected_key="$key"
-                key_pressed=true
-                break
-                ;;
-        esac
-    fi
-    sleep 0.1
-done
-
-if [ "$key_pressed" = true ]; then
-    if [ "$detected_key" = "KEY_VOLUMEUP" ]; then
-        INSTALL_ZRAM=1
+case "$choice" in
+    "UP")
         ui_print "-> 用户选择：安装 ZRAM 模块"
-    else
-        INSTALL_ZRAM=0
+        INSTALL_ZRAM=1
+        ;;
+    "DOWN")
         ui_print "-> 用户选择：跳过 ZRAM 模块安装"
-    fi
-else
-    ui_print "-> 未检测到按键，默认为跳过 ZRAM 模块安装"
-fi
+        ;;
+    *)
+        ui_print "-> 未检测到按键，默认为跳过 ZRAM 模块安装"
+        ;;
+esac
 
 if [ "$INSTALL_ZRAM" -eq 1 ]; then
     ui_print ""
@@ -272,48 +264,23 @@ if [ "$INSTALL_ZRAM" -eq 1 ]; then
     fi
 fi
 
-# ------------------------- 新增的 SUSFS 模块安装部分 ------------------------
-
 ui_print ""
 ui_print "-> 进入 SUSFS 模块安装阶段"
-ui_print ""
-ui_print "-> 是否安装 SUSFS 模块？"
-ui_print "用于支持 SUSFS 文件系统"
-ui_print ""
-ui_print "   音量上键：安装 👇"
-ui_print "   音量下键：跳过 👆"
+choice=$(wait_for_key 10 "   音量上键：安装 👇" "   音量下键：跳过 👆")
 INSTALL_SUSFS=0
-timeout=10
-key_pressed=false
-detected_key=""
-end_time=$(( $(date +%s) + timeout ))
 
-while [ $(date +%s) -lt $end_time ]; do
-    key_output=$(getevent -qlc 1 2>/dev/null)
-    if [ -n "$key_output" ]; then
-        key=$(echo "$key_output" | awk '{print $3}')
-        case "$key" in
-            "KEY_VOLUMEDOWN" | "KEY_VOLUMEUP")
-                detected_key="$key"
-                key_pressed=true
-                break
-                ;;
-        esac
-    fi
-    sleep 0.1
-done
-
-if [ "$key_pressed" = true ]; then
-    if [ "$detected_key" = "KEY_VOLUMEUP" ]; then
-        INSTALL_SUSFS=1
+case "$choice" in
+    "UP")
         ui_print "-> 用户选择：安装 SUSFS 模块"
-    else
-        INSTALL_SUSFS=0
+        INSTALL_SUSFS=1
+        ;;
+    "DOWN")
         ui_print "-> 用户选择：跳过 SUSFS 模块安装"
-    fi
-else
-    ui_print "-> 未检测到按键，默认为跳过 SUSFS 模块安装"
-fi
+        ;;
+    *)
+        ui_print "-> 未检测到按键，默认为跳过 SUSFS 模块安装"
+        ;;
+esac
 
 if [ "$INSTALL_SUSFS" -eq 1 ]; then
     ui_print ""
