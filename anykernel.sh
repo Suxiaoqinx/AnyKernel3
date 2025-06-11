@@ -114,7 +114,7 @@ echo "$clean_targets" | while read -r target; do
                     ;;
             esac
         else
-            ui_print "⚠️ 清理失败: $target_name (可能需要手动删除)
+            ui_print "⚠️ 清理失败: $target_name (可能需要手动删除)"
         fi
     else
         ui_print "ℹ️ 未发现: $(basename "$path")"
@@ -222,6 +222,7 @@ else
     write_boot # use flash_boot to skip ramdisk repack, e.g. for devices with init_boot ramdisk
 fi
 
+# ZRAM 模块安装（独立部分）
 ui_print ""
 ui_print "-> 进入 ZRAM 模块安装阶段"
 ui_print ""
@@ -284,6 +285,7 @@ if [ "$INSTALL_ZRAM" -eq 1 ]; then
     fi
 fi
 
+# SUSFS 模块安装（独立部分）
 ui_print ""
 ui_print "-> 进入 SUSFS 模块安装阶段"
 ui_print ""
@@ -314,8 +316,7 @@ while [ $(date +%s) -lt $end_time ]; do
 done
 
 if [ "$key_pressed" = true ]; then
-    if [ "$detected_key" = "K
-EY_VOLUMEUP" ]; then
+    if [ "$detected_key" = "KEY_VOLUMEUP" ]; then
         INSTALL_SUSFS=1
         ui_print "-> 用户选择：安装 SUSFS 模块"
     else
