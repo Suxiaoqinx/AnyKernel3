@@ -114,7 +114,7 @@ echo "$clean_targets" | while read -r target; do
                     ;;
             esac
         else
-            ui_print "⚠️ 清理失败: $target_name (可能需要手动删除)"
+            ui_print "⚠️ 清理失败: $target_name (可能需要手动删除)
         fi
     else
         ui_print "ℹ️ 未发现: $(basename "$path")"
@@ -136,95 +136,82 @@ ui_print " " "  -> ksu_supported: $ksu_supported"
 $ksu_supported || abort "  -> Non-GKI device, abort."
 
 ui_print "-> 进入 KPM 补丁选择阶段"
+ui_print ""
+ui_print "⚠️ 应用KPM补丁可能会导致设备异常重启1~2次"
+ui_print "   如果不需要KPM功能，建议跳过此步骤"
+ui_print ""
+ui_print "-> 是否应用 KPM 补丁？"
+ui_print "   音量上键：应用 👍"
+ui_print "   音量下键：跳过 👎"
+SKIP_PATCH=1
 
-KPM_PATCH_SUCCESS=false
-KPM_RETRIES=0
-MAX_RETRIES=3
+ui_print "   请在 10 秒内按键..."
+timeout=10
+key_pressed=false
+detected_key=""
+end_time=$(( $(date +%s) + timeout ))
 
-while [ "$KPM_PATCH_SUCCESS" = false ] && [ "$KPM_RETRIES" -lt "$MAX_RETRIES" ]; do
-    KPM_RETRIES=$((KPM_RETRIES + 1))
-    ui_print ""
-    ui_print "-> KPM 补丁尝试次数: $KPM_RETRIES / $MAX_RETRIES"
-    ui_print ""
-    ui_print "⚠️可能会异常重启1~2次⚠️"
-    ui_print "  这很明显是正常的❛˓◞˂̵✧"
-    ui_print "一直卡一屏就要重刷boot了"
-    ui_print " 没有需求的话可以跳过避免"
-    ui_print ""
-    ui_print "-> 是否应用 KPM 补丁？"
-    ui_print "   音量上键：应用 👍"
-    ui_print "   音量下键：跳过 👎"
-    SKIP_PATCH=1
-
-    ui_print "   请在 10 秒内按键..."
-    timeout=10
-    key_pressed=false
-    detected_key=""
-    end_time=$(( $(date +%s) + timeout ))
-
-    while [ $(date +%s) -lt $end_time ]; do
-        key_output=$(getevent -qlc 1 2>/dev/null)
-        if [ -n "$key_output" ]; then
-            key=$(echo "$key_output" | awk '{print $3}')
-            case "$key" in
-                "KEY_VOLUMEUP" | "KEY_VOLUMEDOWN")
-                    detected_key="$key"
-                    key_pressed=true
-                    break
-                    ;;
-            esac
-        fi
-        sleep 0.1
-    done
-
-    if [ "$key_pressed" = true ]; then
-        if [ "$detected_key" = "KEY_VOLUMEUP" ]; then
-            SKIP_PATCH=0
-            ui_print "-> 用户选择：应用 KPM 补丁"
-        else
-            SKIP_PATCH=1
-            ui_print "-> 用户选择：跳过 KPM 补丁"
-        fi
-    else
-        ui_print "-> 未检测到按键，默认为跳过 KPM 补丁"
+while [ $(date +%s) -lt $end_time ]; do
+    key_output=$(getevent -qlc 1 2>/dev/null)
+    if [ -n "$key_output" ]; then
+        key=$(echo "$key_output" | awk '{print $3}')
+        case "$key" in
+            "KEY_VOLUMEUP" | "KEY_VOLUMEDOWN")
+                detected_key="$key"
+                key_pressed=true
+                break
+                ;;
+        esac
     fi
-
-    IMG_SRC="$AKHOME/Image"
-    PATCH_BIN="$AKHOME/patch_android"
-
-    if [ "$SKIP_PATCH" -eq 0 ]; then
-        ui_print ""
-        ui_print "-> 开始应用 KPM 补丁... 🩹"
-        [ ! -f "$PATCH_BIN" ] && abort "ERROR：找不到补丁工具 $PATCH_BIN ❌"
-        TMPDIR="/data/local/tmp/kpm_patch_$(date +%Y%m%d_%H%M%S)_$$"
-        mkdir -p "$TMPDIR" || abort "ERROR：创建临时目录失败 ❌"
-        cp "$IMG_SRC" "$TMPDIR/" || abort "ERROR：复制 Image 失败 ❌"
-        cp "$PATCH_BIN" "$TMPDIR/" || abort "ERROR：复制 patch_android 失败 ❌"
-        chmod +x "$TMPDIR/patch_android"
-        cd "$TMPDIR" || abort "ERROR: 切换到临时目录失败 ❌"
-
-        ui_print "-> 执行 patch_android..."
-        ./patch_android
-        PATCH_EXIT_CODE=$?
-
-        ui_print "-> patch_android 执行返回码: $PATCH_EXIT_CODE"
-
-        if [ "$PATCH_EXIT_CODE" -eq 0 ]; then
-            [ ! -f "oImage" ] && abort "ERROR：补丁生成失败，未找到 oImage ❌"
-            mv oImage Image
-            cp Image "$AKHOME" || abort "ERROR：复制 Image 到目标失败 ❌"
-            ui_print "-> KPM 补丁应用完成 🎉"
-            KPM_PATCH_SUCCESS=true
-            rm -rf "$TMPDIR"
-        else
-            ui_print "ERROR：补丁应用失败 ❌"
-            ui_print "-> 尝试重试补丁应用... 🛠️"
-            rm -rf "$TMPDIR"
-        fi
-    else
-        ui_print "-> 跳过 KPM 补丁应用"
-    fi
+    sleep 0.1
 done
+
+if [ "$key_pressed" = true ]; then
+    if [ "$detected_key" = "KEY_VOLUMEUP" ]; then
+        SKIP_PATCH=0
+        ui_print "-> 用户选择：应用 KPM 补丁"
+    else
+        SKIP_PATCH=1
+        ui_print "-> 用户选择：跳过 KPM 补丁"
+    fi
+else
+    ui_print "-> 未检测到按键，默认为跳过 KPM 补丁"
+fi
+
+IMG_SRC="$AKHOME/Image"
+PATCH_BIN="$AKHOME/patch_android"
+
+if [ "$SKIP_PATCH" -eq 0 ]; then
+    ui_print ""
+    ui_print "-> 开始应用 KPM 补丁... 🩹"
+    [ ! -f "$PATCH_BIN" ] && abort "ERROR：找不到补丁工具 $PATCH_BIN ❌"
+    TMPDIR="/data/local/tmp/kpm_patch_$(date +%Y%m%d_%H%M%S)_$$"
+    mkdir -p "$TMPDIR" || abort "ERROR：创建临时目录失败 ❌"
+    cp "$IMG_SRC" "$TMPDIR/" || abort "ERROR：复制 Image 失败 ❌"
+    cp "$PATCH_BIN" "$TMPDIR/" || abort "ERROR：复制 patch_android 失败 ❌"
+    chmod +x "$TMPDIR/patch_android"
+    cd "$TMPDIR" || abort "ERROR: 切换到临时目录失败 ❌"
+
+    ui_print "-> 执行 patch_android..."
+    ./patch_android
+    PATCH_EXIT_CODE=$?
+
+    ui_print "-> patch_android 执行返回码: $PATCH_EXIT_CODE"
+
+    if [ "$PATCH_EXIT_CODE" -eq 0 ]; then
+        [ ! -f "oImage" ] && abort "ERROR：补丁生成失败，未找到 oImage ❌"
+        mv oImage Image
+        cp Image "$AKHOME" || abort "ERROR：复制 Image 到目标失败 ❌"
+        ui_print "-> KPM 补丁应用完成 🎉"
+        rm -rf "$TMPDIR"
+    else
+        ui_print "ERROR：补丁应用失败 ❌"
+        ui_print "-> 请检查设备兼容性或联系开发者"
+        rm -rf "$TMPDIR"
+    fi
+else
+    ui_print "-> 跳过 KPM 补丁应用"
+fi
 
 # boot install
 if [ -L "/dev/block/bootdevice/by-name/init_boot_a" -o -L "/dev/block/by-name/init_boot_a" ]; then
@@ -291,6 +278,69 @@ if [ "$INSTALL_ZRAM" -eq 1 ]; then
         "$KSUD_PATH" module install "$MODULE_ZIP"
         if [ $? -eq 0 ]; then
             ui_print "✅ ZRAM 模块安装成功！"
+        else
+            ui_print "⚠️ 模块安装失败，请检查日志 ❌"
+        fi
+    fi
+fi
+
+ui_print ""
+ui_print "-> 进入 SUSFS 模块安装阶段"
+ui_print ""
+ui_print "-> 是否安装 SUSFS 模块？"
+ui_print "用于支持 SUSFS 文件系统"
+ui_print ""
+ui_print "   音量上键：安装 👇"
+ui_print "   音量下键：跳过 👆"
+INSTALL_SUSFS=0
+timeout=10
+key_pressed=false
+detected_key=""
+end_time=$(( $(date +%s) + timeout ))
+
+while [ $(date +%s) -lt $end_time ]; do
+    key_output=$(getevent -qlc 1 2>/dev/null)
+    if [ -n "$key_output" ]; then
+        key=$(echo "$key_output" | awk '{print $3}')
+        case "$key" in
+            "KEY_VOLUMEDOWN" | "KEY_VOLUMEUP")
+                detected_key="$key"
+                key_pressed=true
+                break
+                ;;
+        esac
+    fi
+    sleep 0.1
+done
+
+if [ "$key_pressed" = true ]; then
+    if [ "$detected_key" = "K
+EY_VOLUMEUP" ]; then
+        INSTALL_SUSFS=1
+        ui_print "-> 用户选择：安装 SUSFS 模块"
+    else
+        INSTALL_SUSFS=0
+        ui_print "-> 用户选择：跳过 SUSFS 模块安装"
+    fi
+else
+    ui_print "-> 未检测到按键，默认为跳过 SUSFS 模块安装"
+fi
+
+if [ "$INSTALL_SUSFS" -eq 1 ]; then
+    ui_print ""
+    ui_print "-> 开始安装 SUSFS 模块 'ksu_module_susfs.zip'... 📦"
+    MODULE_SUSFS_ZIP="$AKHOME/ksu_module_susfs.zip"
+    KSUD_PATH="/data/adb/ksud"
+
+    if [ ! -f "$MODULE_SUSFS_ZIP" ]; then
+        ui_print "ERROR：找不到模块文件 $MODULE_SUSFS_ZIP，跳过安装 ❌"
+    elif [ ! -x "$KSUD_PATH" ]; then
+        ui_print "ERROR：ksud 工具不可执行，请确保已正确安装KernelSU ❌"
+    else
+        ui_print "-> 正在执行模块安装命令..."
+        "$KSUD_PATH" module install "$MODULE_SUSFS_ZIP"
+        if [ $? -eq 0 ]; then
+            ui_print "✅ SUSFS 模块安装成功！"
         else
             ui_print "⚠️ 模块安装失败，请检查日志 ❌"
         fi
