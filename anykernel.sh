@@ -140,6 +140,7 @@ KPM_PATCH_SUCCESS=false
 KPM_RETRIES=0
 MAX_RETRIES=3
 
+# 修改：如果跳过补丁，直接继续执行后续流程
 ui_print "-> 是否应用 KPM 补丁？"
 ui_print "   音量上键：应用 👍"
 ui_print "   音量下键：跳过 👎"
@@ -177,7 +178,9 @@ else
     ui_print "-> 未检测到按键，默认为跳过 KPM 补丁"
 fi
 
+# 无论是否跳过KPM补丁，都继续执行后续流程
 if [ "$SKIP_PATCH" -eq 0 ]; then
+    # 如果选择应用 KPM 补丁，则开始应用补丁
     ui_print ""
     ui_print "-> 开始应用 KPM 补丁... 🩹"
     [ ! -f "$PATCH_BIN" ] && abort "ERROR：找不到补丁工具 $PATCH_BIN ❌"
@@ -203,10 +206,11 @@ if [ "$SKIP_PATCH" -eq 0 ]; then
         rm -rf "$TMPDIR"
     else
         ui_print "ERROR：补丁应用失败 ❌"
+        ui_print "-> 尝试重试补丁应用... 🛠️"
         rm -rf "$TMPDIR"
     fi
 else
-    ui_print "-> 跳过 KPM 补丁应用，继续执行后续步骤"
+    ui_print "-> 跳过 KPM 补丁应用，继续执行后续流程"
 fi
 
 # ✅ ZRAM 安装逻辑（不会被补丁跳过影响）
