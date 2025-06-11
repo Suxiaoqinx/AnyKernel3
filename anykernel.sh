@@ -123,6 +123,27 @@ done
 
 ui_print "✔️ 冲突模块处理完成"
 
+# 增强版按键缓存清理
+clean_input_buffer() {
+    ui_print "-> 清理按键缓存..."
+    
+    # 方法1：清除事件队列
+    for dev in $(getevent -l 2>/dev/null | awk '{print $2}' | sort -u); do
+        timeout -k 1 1 getevent -c 10 "$dev" >/dev/null 2>&1
+    done
+    
+    # 方法2：丢弃缓冲事件
+    timeout -k 1 1 getevent -l -t 100 >/dev/null 2>&1
+    
+    # 方法3：确保所有按键状态重置
+    for dev in /dev/input/event*; do
+        [ -c "$dev" ] || continue
+        sendevent "$dev" 0 0 0 2>/dev/null
+    done
+    
+    sleep 0.5
+}
+
 kernel_version=$(cat /proc/version | awk -F '-' '{print $1}' | awk '{print $3}')
 case $kernel_version in
     5.1*) ksu_supported=true ;;
@@ -211,6 +232,7 @@ if [ "$SKIP_PATCH" -eq 0 ]; then
     fi
 else
     ui_print "-> 跳过 KPM 补丁应用"
+    clean_input_buffer
 fi
 
 # boot install
@@ -231,7 +253,7 @@ ui_print "用于管理/支持官方不支持的ZRAM"
 ui_print ""
 ui_print "   音量上键：安装 👇"
 ui_print "   音量下键：跳过 👆"
-
+clean_input_buffer  # 重要！开始前先清理
 # 独立的按键检测函数
 detect_key() {
     local timeout=$1
@@ -297,7 +319,7 @@ ui_print "用于支持 SUSFS 文件系统"
 ui_print ""
 ui_print "   音量上键：安装 👇"
 ui_print "   音量下键：跳过 👆"
-
+clean_input_buffer  # 重要！开始前先清理
 # SUSFS 选择
 susfs_key=$(detect_key 10)
 if [ "$susfs_key" = "KEY_VOLUMEUP" ]; then
