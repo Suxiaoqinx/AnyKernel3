@@ -232,6 +232,8 @@ ui_print ""
 ui_print "   音量上键：安装 👇"
 ui_print "   音量下键：跳过 👆"
 INSTALL_ZRAM=0
+
+ui_print "   请在 10 秒内按键..."
 timeout=10
 key_pressed=false
 detected_key=""
@@ -295,6 +297,8 @@ ui_print ""
 ui_print "   音量上键：安装 👇"
 ui_print "   音量下键：跳过 👆"
 INSTALL_SUSFS=0
+
+ui_print "   请在 10 秒内按键..."
 timeout=10
 key_pressed=false
 detected_key=""
