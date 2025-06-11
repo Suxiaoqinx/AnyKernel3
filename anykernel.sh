@@ -235,6 +235,7 @@ else
     write_boot # use flash_boot to skip ramdisk repack, e.g. for devices with init_boot ramdisk
 fi
 
+sleep 1
 ui_print ""
 ui_print "-> 进入 ZRAM 模块安装阶段"
 ui_print ""
@@ -297,6 +298,7 @@ if [ "$INSTALL_ZRAM" -eq 1 ]; then
     fi
 fi
 
+sleep 1
 ui_print ""
 ui_print "-> 进入 SUSFS 模块安装阶段"
 ui_print ""
