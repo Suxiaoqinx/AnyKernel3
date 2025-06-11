@@ -132,7 +132,7 @@ case $kernel_version in
 esac
 
 ui_print "内核构建者: Coolapk@Suxiaoqing"
-ui_print " " "  -> ksu_supported: $ksu_supported"
+ui_print "  -> ksu_supported: $ksu_supported"
 $ksu_supported || abort "  -> Non-GKI device, abort."
 
 ui_print "-> 进入 KPM 补丁选择阶段"
@@ -291,6 +291,69 @@ if [ "$INSTALL_ZRAM" -eq 1 ]; then
         "$KSUD_PATH" module install "$MODULE_ZIP"
         if [ $? -eq 0 ]; then
             ui_print "✅ ZRAM 模块安装成功！"
+        else
+            ui_print "⚠️ 模块安装失败，请检查日志 ❌"
+        fi
+    fi
+fi
+
+ui_print ""
+ui_print "-> 进入 SUSFS 模块安装阶段"
+ui_print ""
+ui_print "-> 是否安装 SUSFS 模块？"
+ui_print "用于提供系统分区安全挂载功能"
+ui_print ""
+ui_print "   音量上键：安装 👇"
+ui_print "   音量下键：跳过 👆"
+INSTALL_SUSFS=0
+timeout=10
+key_pressed=false
+detected_key=""
+end_time=$(( $(date +%s) + timeout ))
+
+while [ $(date +%s) -lt $end_time ]; do
+    key_output=$(getevent -qlc 1 2>/dev/null)
+    if [ -n "$key_output" ]; then
+        key=$(echo "$key_output" | awk '{print $3}')
+        case "$key" in
+            "KEY_VOLUMEDOWN" | "KEY_VOLUMEUP")
+                detected_key="$key"
+                key_pressed=true
+                break
+                ;;
+        esac
+    fi
+    sleep 0.1
+done
+
+if [ "$key_pressed" = true ]; then
+    if [ "$detected_key" = "KEY_VOLUMEUP" ]; then
+        INSTALL_SUSFS=1
+        ui_print "-> 用户选择：安装 SUSFS 模块"
+    else
+        INSTALL_SUSFS=0
+        ui_print "-> 用户选择：跳过 SUSFS 模块安装"
+    fi
+else
+    ui_print "-> 未检测到按键，默认为跳过 SUSFS 模块安装"
+fi
+
+if [ "$INSTALL_SUSFS" -eq 1 ]; then
+    ui_print ""
+    ui_print "-> 开始安装 SUSFS 模块 'ksu_module_susfs.zip'... 📦"
+    MODULE_ZIP="$AKHOME/ksu_module_susfs.zip"
+    KSUD_PATH="/data/adb/ksud"
+
+    if [ ! -f "$MODULE_ZIP" ]; then
+        ui_print "ERROR：找不到模块文件 $MODULE_ZIP，跳过安装 ❌"
+    elif [ ! -x "$KSUD_PATH" ]; then
+        ui_print "ERROR：ksud 工具不可执行，请确保已正确安装KernelSU ❌"
+    else
+        ui_print "-> 正在执行模块安装命令..."
+        "$KSUD_PATH" module install "$MODULE_ZIP"
+        if [ $? -eq 0 ]; then
+            ui_print "✅ SUSFS 模块安装成功！"
+            ui_print "   ▸ 请确保已卸载Shamiko模块，否则可能冲突"
         else
             ui_print "⚠️ 模块安装失败，请检查日志 ❌"
         fi
