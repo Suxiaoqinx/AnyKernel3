@@ -222,7 +222,7 @@ else
     write_boot # use flash_boot to skip ramdisk repack, e.g. for devices with init_boot ramdisk
 fi
 
-# ZRAM 模块安装（独立部分）
+# ZRAM 模块安装（使用独立的按键检测函数）
 ui_print ""
 ui_print "-> 进入 ZRAM 模块安装阶段"
 ui_print ""
@@ -231,38 +231,39 @@ ui_print "用于管理/支持官方不支持的ZRAM"
 ui_print ""
 ui_print "   音量上键：安装 👇"
 ui_print "   音量下键：跳过 👆"
-INSTALL_ZRAM=0
 
-ui_print "   请在 10 秒内按键..."
-timeout=10
-key_pressed=false
-detected_key=""
-end_time=$(( $(date +%s) + timeout ))
+# 独立的按键检测函数
+detect_key() {
+    local timeout=$1
+    local end_time=$(( $(date +%s) + timeout ))
+    local detected_key=""
+    
+    while [ $(date +%s) -lt $end_time ]; do
+        key_output=$(getevent -qlc 1 2>/dev/null)
+        if [ -n "$key_output" ]; then
+            key=$(echo "$key_output" | awk '{print $3}')
+            case "$key" in
+                "KEY_VOLUMEDOWN" | "KEY_VOLUMEUP")
+                    detected_key="$key"
+                    break
+                    ;;
+            esac
+        fi
+        sleep 0.1
+    done
+    echo "$detected_key"
+}
 
-while [ $(date +%s) -lt $end_time ]; do
-    key_output=$(getevent -qlc 1 2>/dev/null)
-    if [ -n "$key_output" ]; then
-        key=$(echo "$key_output" | awk '{print $3}')
-        case "$key" in
-            "KEY_VOLUMEDOWN" | "KEY_VOLUMEUP")
-                detected_key="$key"
-                key_pressed=true
-                break
-                ;;
-        esac
-    fi
-    sleep 0.1
-done
-
-if [ "$key_pressed" = true ]; then
-    if [ "$detected_key" = "KEY_VOLUMEUP" ]; then
-        INSTALL_ZRAM=1
-        ui_print "-> 用户选择：安装 ZRAM 模块"
-    else
-        INSTALL_ZRAM=0
-        ui_print "-> 用户选择：跳过 ZRAM 模块安装"
-    fi
+# ZRAM 选择
+zram_key=$(detect_key 10)
+if [ "$zram_key" = "KEY_VOLUMEUP" ]; then
+    INSTALL_ZRAM=1
+    ui_print "-> 用户选择：安装 ZRAM 模块"
+elif [ "$zram_key" = "KEY_VOLUMEDOWN" ]; then
+    INSTALL_ZRAM=0
+    ui_print "-> 用户选择：跳过 ZRAM 模块安装"
 else
+    INSTALL_ZRAM=0
     ui_print "-> 未检测到按键，默认为跳过 ZRAM 模块安装"
 fi
 
@@ -287,7 +288,7 @@ if [ "$INSTALL_ZRAM" -eq 1 ]; then
     fi
 fi
 
-# SUSFS 模块安装（独立部分）
+# SUSFS 模块安装（使用相同的独立按键检测）
 ui_print ""
 ui_print "-> 进入 SUSFS 模块安装阶段"
 ui_print ""
@@ -296,38 +297,17 @@ ui_print "用于支持 SUSFS 文件系统"
 ui_print ""
 ui_print "   音量上键：安装 👇"
 ui_print "   音量下键：跳过 👆"
-INSTALL_SUSFS=0
 
-ui_print "   请在 10 秒内按键..."
-timeout=10
-key_pressed=false
-detected_key=""
-end_time=$(( $(date +%s) + timeout ))
-
-while [ $(date +%s) -lt $end_time ]; do
-    key_output=$(getevent -qlc 1 2>/dev/null)
-    if [ -n "$key_output" ]; then
-        key=$(echo "$key_output" | awk '{print $3}')
-        case "$key" in
-            "KEY_VOLUMEDOWN" | "KEY_VOLUMEUP")
-                detected_key="$key"
-                key_pressed=true
-                break
-                ;;
-        esac
-    fi
-    sleep 0.1
-done
-
-if [ "$key_pressed" = true ]; then
-    if [ "$detected_key" = "KEY_VOLUMEUP" ]; then
-        INSTALL_SUSFS=1
-        ui_print "-> 用户选择：安装 SUSFS 模块"
-    else
-        INSTALL_SUSFS=0
-        ui_print "-> 用户选择：跳过 SUSFS 模块安装"
-    fi
+# SUSFS 选择
+susfs_key=$(detect_key 10)
+if [ "$susfs_key" = "KEY_VOLUMEUP" ]; then
+    INSTALL_SUSFS=1
+    ui_print "-> 用户选择：安装 SUSFS 模块"
+elif [ "$susfs_key" = "KEY_VOLUMEDOWN" ]; then
+    INSTALL_SUSFS=0
+    ui_print "-> 用户选择：跳过 SUSFS 模块安装"
 else
+    INSTALL_SUSFS=0
     ui_print "-> 未检测到按键，默认为跳过 SUSFS 模块安装"
 fi
 
